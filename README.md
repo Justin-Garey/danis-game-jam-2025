@@ -1,6 +1,8 @@
 # Submission for Danis's Game Jam 2025
 
-
+## Packages
+### Matter.js for Physics
+https://brm.io/matter-js/
 
 ## Development
 ### Setup
