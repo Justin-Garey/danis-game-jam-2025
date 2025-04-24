@@ -30,7 +30,7 @@ import * as Matter from 'matter-js'
 
 //   runner = Runner.create();
 //   Runner.run(runner, engine);
-  
+
 //   ground = Bodies.rectangle(200, 390, 200, 20, {isStatic: true});
 //   World.add(world, ground);
 
@@ -70,126 +70,203 @@ import * as Matter from 'matter-js'
 
 let canvas = document.querySelector("#game-canvas") as HTMLCanvasElement;
 
-  var Engine = Matter.Engine,
-        Render = Matter.Render,
-        Runner = Matter.Runner,
-        Composites = Matter.Composites,
-        Events = Matter.Events,
-        Constraint = Matter.Constraint,
-        MouseConstraint = Matter.MouseConstraint,
-        Mouse = Matter.Mouse,
-        Body = Matter.Body,
-        Composite = Matter.Composite,
-        Bodies = Matter.Bodies;
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-    // create engine
-    var engine = Engine.create(),
-        world = engine.world;
+window.addEventListener("resize", function(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
 
-    // create renderer
-    var render = Render.create({
-        canvas: canvas,
-        engine: engine,
-        options: {
-            width: 800,
-            height: 600,
-            showAngleIndicator: true
-        }
-    });
+var Engine = Matter.Engine,
+  Render = Matter.Render,
+  Runner = Matter.Runner,
+  Composites = Matter.Composites,
+  Events = Matter.Events,
+  Constraint = Matter.Constraint,
+  MouseConstraint = Matter.MouseConstraint,
+  Mouse = Matter.Mouse,
+  Body = Matter.Body,
+  Composite = Matter.Composite,
+  Bodies = Matter.Bodies;
 
-    Render.run(render);
+// create engine
+var engine = Engine.create(),
+  world = engine.world;
 
-    // create runner
-    var runner = Runner.create();
-    Runner.run(runner, engine);
+// create renderer
+var render = Render.create({
+  element: document.body,
+  canvas: canvas,
+  engine: engine,
+  options: {
+    width: canvas.width,
+    height: canvas.height,
+    showAngleIndicator: true,
+    hasBounds: false
+  }
+});
 
-    // add bodies
-    var ground = Bodies.rectangle(395, 600, 815, 50, { isStatic: true, render: { fillStyle: '#060a19' } }),
-        rockOptions = { density: 0.004 },
-        rock = Bodies.polygon(170, 450, 8, 20, rockOptions),
-        anchor = { x: 170, y: 450 },
-        elastic = Constraint.create({ 
-            pointA: anchor, 
-            bodyB: rock, 
-            length: 0.01,
-            damping: 0.01,
-            stiffness: 0.05
-        });
+Render.run(render);
 
-    var pyramid = Composites.pyramid(500, 300, 9, 10, 0, 0, function(x, y) {
-        return Bodies.rectangle(x, y, 25, 40);
-    });
+// create runner
+var runner = Runner.create();
+Runner.run(runner, engine);
 
-    var ground2 = Bodies.rectangle(610, 250, 200, 20, { isStatic: true, render: { fillStyle: '#060a19' } });
+// add bodies
+var ground = Bodies.rectangle(395, 600, 815, 50, { isStatic: true, render: { fillStyle: '#060a19' } }),
+  rockOptions = { density: 0.004 },
+  rock = Bodies.polygon(170, 450, 8, 20, rockOptions),
+  anchor = { x: 170, y: 450 },
+  elastic = Constraint.create({
+    pointA: anchor,
+    bodyB: rock,
+    length: 0.01,
+    damping: 0.01,
+    stiffness: 0.05
+  });
 
-    var pyramid2 = Composites.pyramid(550, 0, 5, 10, 0, 0, function(x, y) {
-        return Bodies.rectangle(x, y, 25, 40);
-    });
+var pyramid = Composites.pyramid(500, 300, 9, 10, 0, 0, function (x, y) {
+  return Bodies.rectangle(x, y, 25, 40);
+});
 
-    Composite.add(engine.world, [ground, pyramid, ground2, pyramid2, rock, elastic]);
+var ground2 = Bodies.rectangle(610, 250, 200, 20, { isStatic: true, render: { fillStyle: '#060a19' } });
 
-    // Create a keyHandlers
-    const keyHandlers = {
-      Space: () => {
-        Matter.Body.applyForce(rock, {
-          x: rock.position.x,
-          y: rock.position.y
-        }, {x: 0.02, y: 0})
-      },
-      KeyA: () => {
-        Matter.Body.applyForce(rock, {
-          x: rock.position.x,
-          y: rock.position.y
-        }, {x: -0.02, y: 0})
-      },
-    };
-    
-    const keysDown = new Set();
-    document.addEventListener("keydown", event => {
-      keysDown.add(event.code);
-    });
-    document.addEventListener("keyup", event => {
-      keysDown.delete(event.code);
-    });
-    
-    Matter.Events.on(engine, "beforeUpdate", event => {
-      [...keysDown].forEach(k => {
-        keyHandlers[k]?.();
-      });
-    });
-    Events.on(engine, 'afterUpdate', function() {
-        if (mouseConstraint.mouse.button === -1 && (rock.position.x > 190 || rock.position.y < 430)) {
-            // Limit maximum speed of current rock.
-            if (Body.getSpeed(rock) > 45) {
-                Body.setSpeed(rock, 45);
-            }
+var pyramid2 = Composites.pyramid(550, 0, 5, 10, 0, 0, function (x, y) {
+  return Bodies.rectangle(x, y, 25, 40);
+});
 
-            // Release current rock and add a new one.
-            rock = Bodies.polygon(170, 450, 7, 20, rockOptions);
-            Composite.add(engine.world, rock);
-            elastic.bodyB = rock;
-        }
-    });
 
-    // add mouse control
-    var mouse = Mouse.create(render.canvas),
-        mouseConstraint = MouseConstraint.create(engine, {
-            mouse: mouse,
-            constraint: {
-                stiffness: 0.2,
-                render: {
-                    visible: false
-                }
-            }
-        });
+var group = Body.nextGroup(true),
+  length = 200,
+  width = 25;
 
-    Composite.add(world, mouseConstraint);
+var pendulum = Composites.stack(350, 160, 1, 1, -20, 0, function (x, y) {
+  return Bodies.rectangle(x, y, length, width, {
+    collisionFilter: { group: group },
+    frictionAir: 0,
+    chamfer: 5,
+    render: {
+      fillStyle: 'transparent',
+      lineWidth: 1
+    }
+  });
+});
 
-    // keep the mouse in sync with rendering
-    render.mouse = mouse;
+Composite.add(pendulum, Constraint.create({
+  bodyB: pendulum.bodies[0],
+  pointB: { x: -length * 0.42, y: 0 },
+  pointA: { x: pendulum.bodies[0].position.x - length * 0.42, y: pendulum.bodies[0].position.y },
+  stiffness: 0.9,
+  length: 0,
+  render: {
+    strokeStyle: '#4a485b'
+  }
+}));
 
-    // fit the render viewport to the scene
-    Render.lookAt(render, {
-        min: { x: 0, y: 0 },
-        max: { x: 800, y: 600 }
-    });
+let paddle_right_group = Body.nextGroup(true);
+let paddle_length = 100;
+let paddle_width = 10;
+let paddle_right = Composites.stack(400, 400, 1, 1, -20, 0, function (x, y) {
+  return Bodies.rectangle(x, y, paddle_length, paddle_width, {
+    collisionFilter: { group: paddle_right_group },
+    frictionAir: 0,
+    chamfer: 5,
+    render: {
+      fillStyle: 'transparent',
+      lineWidth: 1
+    }
+  });
+});
+Composite.add(paddle_right, Constraint.create({
+  bodyB: paddle_right.bodies[0],
+  pointB: { x: -paddle_length * 0.42, y: 0 },
+  pointA: { x: paddle_right.bodies[0].position.x - paddle_length * 0.42, y: paddle_right.bodies[0].position.y },
+  stiffness: 0.9,
+  length: 0,
+  render: {
+    strokeStyle: '#4a485b'
+  }
+}));
+
+let board_center = canvas.width / 2;
+
+
+const BOARD_WIDTH = 600;
+
+let left_wall = Bodies.rectangle(board_center - (BOARD_WIDTH / 2), (canvas.height / 2), 1, canvas.height, {
+  isStatic: true, 
+  render: { 
+      fillStyle: '#060a19' 
+  }
+})
+
+let right_wall = Bodies.rectangle(board_center + (BOARD_WIDTH / 2), (canvas.height / 2), 1, canvas.height, {
+  isStatic: true, 
+  render: { 
+      fillStyle: '#060a19' 
+  }
+})
+
+
+Composite.add(engine.world, [ground, pyramid, ground2, pyramid2, rock, elastic, paddle_right, pendulum, left_wall, right_wall]);
+
+// Create a keyHandlers
+const keyHandlers = {
+  Space: () => {
+    Matter.Body.applyForce(paddle_right.bodies[0], {
+      x: paddle_right.bodies[0].position.x,
+      y: paddle_right.bodies[0].position.y
+    }, { x: 0, y: -0.01 })
+  },
+  KeyA: () => {
+    Matter.Body.applyForce(rock, {
+      x: rock.position.x,
+      y: rock.position.y
+    }, { x: 0.3, y: -0.2 })
+  },
+};
+
+const keysDown = new Set();
+document.addEventListener("keydown", event => {
+  keysDown.add(event.code);
+});
+document.addEventListener("keyup", event => {
+  keysDown.delete(event.code);
+});
+
+Matter.Events.on(engine, "beforeUpdate", event => {
+  [...keysDown].forEach(k => {
+    keyHandlers[k]?.();
+  });
+});
+Events.on(engine, 'afterUpdate', function () {
+  if (mouseConstraint.mouse.button === -1 && (rock.position.x > 190 || rock.position.y < 430)) {
+    // Limit maximum speed of current rock.
+    if (Body.getSpeed(rock) > 45) {
+      Body.setSpeed(rock, 45);
+    }
+
+    // Release current rock and add a new one.
+    rock = Bodies.polygon(170, 450, 7, 20, rockOptions);
+    Composite.add(engine.world, rock);
+    elastic.bodyB = rock;
+  }
+});
+
+// add mouse control
+var mouse = Mouse.create(render.canvas),
+  mouseConstraint = MouseConstraint.create(engine, {
+    mouse: mouse,
+    constraint: {
+      stiffness: 0.2,
+      render: {
+        visible: false
+      }
+    }
+  });
+
+Composite.add(world, mouseConstraint);
+
+// keep the mouse in sync with rendering
+render.mouse = mouse;
