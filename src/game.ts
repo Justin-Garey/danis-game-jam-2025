@@ -11,6 +11,8 @@ let board_center = [canvas.width / 2, canvas.height / 2];
 
 const BOARD_WIDTH = 600;
 
+Matter.Resolver._restingThresh = 0.001; // default is 4
+
 // Common Matter Uses
 let Engine = Matter.Engine;
 let Render = Matter.Render;
@@ -42,8 +44,7 @@ Render.run(render);
 let runner = Runner.create();
 Runner.run(runner, engine);
 
-// TODO: Walls can be made into a vertice set
-// Create the Walls
+// Create the Walls (P.S. Do not make this into a vertices set)
 let left_wall = Bodies.rectangle(board_center[0] - (BOARD_WIDTH / 2), (canvas.height / 2), 1, canvas.height, {
     isStatic: true,
     render: {
@@ -93,11 +94,17 @@ let lower_wall_set = Bodies.fromVertices(lower_wall_center.x, lower_wall_center.
 })
 
 // Add a ball
-let ball = Bodies.circle(canvas.width / 2, canvas.height / 2, 20, { isStatic: false, render: { fillStyle: '#060a19' } });
+let ball = Bodies.circle(canvas.width / 2, canvas.height / 2, 20, {
+    isStatic: false,
+    restitution: 0.9, // Makes the ball bouncy
+    friction: 0.01, // Friction against other objects
+    frictionAir: 0.01, // Reduces air resistance for faster movement
+    render: { fillStyle: '#060a19' }
+});
 
 // Declare flipper size
-const flipper_length = 100;
-const flipper_width = 10;
+const flipper_length = 150;
+const flipper_width = 20;
 const distance_from_center = BOARD_WIDTH / 3;
 const distance_from_bottom = canvas.height / 6;
 
@@ -105,72 +112,104 @@ console.log(BOARD_WIDTH, board_center, distance_from_bottom, distance_from_cente
 
 // Add right flipper
 
-console.log(board_center[0] + distance_from_center, canvas.height - distance_from_bottom)
-
-let right_flipper_group = Body.nextGroup(true);
-let right_flipper = Bodies.rectangle(board_center[0] + distance_from_center, canvas.height - distance_from_bottom, flipper_length, flipper_width, {
-    collisionFilter: { group: right_flipper_group },
-    isStatic: true,
-    frictionAir: 0,
-    chamfer: 5,
-    render: {
-        fillStyle: 'transparent',
-        lineWidth: 1
-    }
-});
-let right_flipper_constraint = Constraint.create({
-    bodyB: right_flipper,
-    pointB: { x: -flipper_length * 0.42, y: 0 },
-    pointA: { x: right_flipper.position.x - flipper_length * 0.42, y: right_flipper.position.y },
-    stiffness: 0.9,
-    length: 0,
-    render: {
-        strokeStyle: '#4a485b'
-    }
-});
-Matter.World.add(world, right_flipper_constraint);
-
-//Body.setAngle(right_flipper, 3.14159);
-
-// Create left flipper
-
-console.log(board_center[0] - distance_from_center)
-
 let left_flipper_group = Body.nextGroup(true);
 let left_flipper = Bodies.rectangle(board_center[0] - distance_from_center + flipper_length, canvas.height - distance_from_bottom, flipper_length, flipper_width, {
     collisionFilter: { group: left_flipper_group },
-    //isStatic: true,
-    frictionAir: 0,
+    isStatic: false, // Allow movement
     chamfer: 5,
     render: {
-        fillStyle: 'transparent',
+        fillStyle: '#ff0000',
         lineWidth: 1
     }
 });
-let left_flipper_constraint = Constraint.create({
-    bodyB: left_flipper,
-    pointB: { x: -flipper_length * 0.42, y: 0 },
-    pointA: { x: left_flipper.position.x - flipper_length * 0.42, y: left_flipper.position.y },
-    stiffness: 0.9,
+
+// board_center[0], canvas.height / 2
+
+let left_flipper_hinge = Bodies.circle(board_center[0] - distance_from_center, canvas.height - distance_from_bottom, 5, {
+    isStatic: true,
+    render: {
+        visible: false
+    }
+});
+
+let left_flipper_hinge_constraint = Constraint.create({
+    bodyA: left_flipper,
+    pointA: { x: 0 - (flipper_length / 2), y: 0 },
+    bodyB: left_flipper_hinge,
+    pointB: { x: 0, y: 0 },
+    stiffness: 1,
     length: 0,
     render: {
         strokeStyle: '#4a485b'
     }
 });
-Matter.World.add(world, left_flipper_constraint);
+
+// Add angle constraint logic
+Matter.Events.on(engine, "beforeUpdate", () => {
+    const maxAngle = Math.PI / 8; // -22.5 degrees
+    const minAngle = -Math.PI / 8; // -22.5 degrees
+
+    if (left_flipper.angle > maxAngle) {
+        Body.setAngle(left_flipper, maxAngle);
+        Body.setAngularVelocity(left_flipper, 0);
+    } else if (left_flipper.angle < minAngle) {
+        Body.setAngle(left_flipper, minAngle);
+        Body.setAngularVelocity(left_flipper, 0);
+    }
+});
+
+Composite.add(world, [left_flipper, left_flipper_hinge, left_flipper_hinge_constraint]);
+
+// Right flipper
+let right_flipper_group = Body.nextGroup(true);
+let right_flipper = Bodies.rectangle(board_center[0] + distance_from_center, canvas.height - distance_from_bottom, 150, 20, {
+    collisionFilter: { group: right_flipper_group },
+    isStatic: false, // Allow movement
+    chamfer: 5,
+    render: {
+        fillStyle: '#0000ff',
+        lineWidth: 1
+    }
+});
+
+let right_flipper_hinge = Bodies.circle(board_center[0] + distance_from_center, canvas.height - distance_from_bottom, 5, {
+    isStatic: true,
+    render: {
+        visible: false
+    }
+});
+
+let right_flipper_hinge_constraint = Constraint.create({
+    bodyA: right_flipper,
+    pointA: { x: 75, y: 0 },
+    bodyB: right_flipper_hinge,
+    pointB: { x: 0, y: 0 },
+    stiffness: 1,
+    length: 0,
+    render: {
+        strokeStyle: '#4a485b'
+    }
+});
+
+// Add angle constraint logic
+Matter.Events.on(engine, "beforeUpdate", () => {
+    const maxAngle = Math.PI / 8; // -22.5 degrees
+    const minAngle = -Math.PI / 8; // -22.5 degrees
+
+    if (right_flipper.angle > maxAngle) {
+        Body.setAngle(right_flipper, maxAngle);
+        Body.setAngularVelocity(right_flipper, 0);
+    } else if (right_flipper.angle < minAngle) {
+        Body.setAngle(right_flipper, minAngle);
+        Body.setAngularVelocity(right_flipper, 0);
+    }
+});
+
+Composite.add(world, [right_flipper, right_flipper_hinge, right_flipper_hinge_constraint]);
 
 // Create invisible blocks for the flippers
 
-
-// TODO: Finish this, maybe instead of a circle make a vector set for an angled rectangle under the 
-let left_flipper_block = Bodies.circle(board_center[0] - distance_from_center, canvas.height - distance_from_bottom + 10, 5, {
-    isStatic: true,
-    render: {
-        fillStyle: '#000000'
-    }
-})
-
-Composite.add(world, [left_wall, right_wall, bottom_wall, top_wall, lower_wall_set, ball, right_flipper, left_flipper, left_flipper_block])
+Composite.add(world, [left_wall, right_wall, bottom_wall, top_wall, lower_wall_set, ball])
 
 // Create a keyHandlers
 const keyHandlers = {
@@ -178,11 +217,11 @@ const keyHandlers = {
         Matter.Body.applyForce(right_flipper, {
             x: right_flipper.position.x,
             y: right_flipper.position.y
-        }, { x: 0, y: -0.01 })
+        }, { x: 0, y: -0.075 })
         Matter.Body.applyForce(left_flipper, {
             x: left_flipper.position.x,
             y: left_flipper.position.y
-        }, { x: 0, y: -0.01 })
+        }, { x: 0, y: -0.075 })
     },
 };
 
