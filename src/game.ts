@@ -1,17 +1,30 @@
 import './style.css'
 import * as Matter from 'matter-js'
 import decomp from 'poly-decomp'
+import ufo from './assets/ufo.svg'
+import outline from './assets/outline.svg'
+import satellite from './assets/satellite.svg'
 
 // General Settings
-const DEBUG = true;
-const BOARD_WIDTH = 600;
+const DEBUG = false;
+const MOUSE_CONTROL_ENABLED = true;
+const BOARD_WIDTH = 800;
 const FPS = 60;
 const GravityY = 1.5;
 const GravityX = 0;
+const INDICATOR_ON = 'rgb(199, 0, 0)';
+const INDICATOR_OFF = 'rgb(254, 216, 23)';
+const delay_indicator_time = 500;
+const LIVES = 8;
 
 // Global Variables
 let score = 0;
 let highscore = parseInt(localStorage.getItem('highscore') || '0', 10);
+let indicator_color = INDICATOR_OFF;
+let delay_indicator = false;
+let state = 'menu'; // menu, playing, paused, gameover
+let ball_count = LIVES;
+
 
 function updateHighscore(points: number) {
     localStorage.setItem('highscore', points.toString());
@@ -32,6 +45,8 @@ let canvas = document.querySelector("#game-canvas") as HTMLCanvasElement;
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 let board_center = [canvas.width / 2, canvas.height / 2];
+let dispenser_location = board_center[0] + (4.75 * BOARD_WIDTH / 12)
+let context = canvas.getContext('2d');
 
 // Common Matter Uses
 let Engine = Matter.Engine;
@@ -60,7 +75,8 @@ let render = Render.create({
     options: {
         width: canvas.width,
         height: canvas.height,
-        showAngleIndicator: true,
+        background: 'transparent',
+        showAngleIndicator: DEBUG,
         wireframes: DEBUG,
         showStats: DEBUG,
         showPerformance: DEBUG,
@@ -71,48 +87,61 @@ let render = Render.create({
 });
 
 // Create the Walls (P.S. Do not make this into a vertices set)
-let left_wall = Bodies.rectangle(board_center[0] - (BOARD_WIDTH / 2), (canvas.height / 2), 1, canvas.height, {
+let left_wall = Bodies.rectangle(board_center[0] - (BOARD_WIDTH / 2), (canvas.height / 2), 2, canvas.height, {
     isStatic: true,
     render: {
         fillStyle: '#060a19'
     }
 })
-let right_wall = Bodies.rectangle(board_center[0] + (BOARD_WIDTH / 2), (canvas.height / 2), 1, canvas.height, {
+let right_wall = Bodies.rectangle(board_center[0] + (BOARD_WIDTH / 2), (canvas.height / 2), 2, canvas.height, {
     isStatic: true,
     render: {
         fillStyle: '#060a19'
     }
 })
-let top_wall = Bodies.rectangle(board_center[0], 0, BOARD_WIDTH, 1, {
+let top_wall = Bodies.rectangle(board_center[0], 0, BOARD_WIDTH, 2, {
     isStatic: true,
     render: {
         fillStyle: '#060a19'
     }
 })
-let bottom_wall = Bodies.rectangle(board_center[0], canvas.height, BOARD_WIDTH, 1, {
+let bottom_wall = Bodies.rectangle(board_center[0], canvas.height, BOARD_WIDTH, 5, {
     isStatic: true,
     render: {
         fillStyle: '#060a19'
     }
 })
 
-// TODO: Figure out the best shape for this. Is it a hole in the middle? Split this into two?
-let lower_wall_vertices_set = [
-    { x: (board_center[0] - (BOARD_WIDTH / 2)), y: (canvas.height - (canvas.height / 12)) },
-    { x: (board_center[0] - (BOARD_WIDTH / 10)), y: Math.floor(canvas.height - (canvas.height / 24)) },
-    { x: board_center[0], y: canvas.height - 1 },
-    { x: (board_center[0] + (BOARD_WIDTH / 10)), y: (canvas.height - (canvas.height / 24)) },
-    { x: (board_center[0] + (BOARD_WIDTH / 2)), y: (canvas.height - (canvas.height / 12)) },
-    { x: (board_center[0] + (BOARD_WIDTH / 2)), y: canvas.height },
+// Bottom wall
+let lower_left_wall_vertices_set = [
+    { x: (board_center[0] - (BOARD_WIDTH / 2)), y: (canvas.height - (canvas.height / 6)) },
+    { x: (board_center[0] - (BOARD_WIDTH / 12)), y: (canvas.height - (canvas.height / 24)) },
+    { x: (board_center[0] - (BOARD_WIDTH / 12)), y: canvas.height },
     { x: (board_center[0] - (BOARD_WIDTH / 2)), y: canvas.height }
 ];
-let lower_wall_center = Matter.Vertices.centre(lower_wall_vertices_set);
-let lower_wall_set = Bodies.fromVertices(lower_wall_center.x, lower_wall_center.y, lower_wall_vertices_set, {
+let lower_left_wall_center = Matter.Vertices.centre(lower_left_wall_vertices_set);
+let lower_left_wall_set = Bodies.fromVertices(lower_left_wall_center.x, lower_left_wall_center.y, lower_left_wall_vertices_set, {
     isStatic: true,
     render: {
         fillStyle: '#000000'
     }
-})
+});
+
+let lower_right_wall_vertices_set = [
+    { x: (board_center[0] + (BOARD_WIDTH / 2)), y: (canvas.height - (canvas.height / 6)) },
+    { x: (board_center[0] + (BOARD_WIDTH / 12)), y: (canvas.height - (canvas.height / 24)) },
+    { x: (board_center[0] + (BOARD_WIDTH / 12)), y: canvas.height },
+    { x: (board_center[0] + (BOARD_WIDTH / 2)), y: canvas.height }
+];
+let lower_right_wall_center = Matter.Vertices.centre(lower_right_wall_vertices_set);
+let lower_right_wall_set = Bodies.fromVertices(lower_right_wall_center.x, lower_right_wall_center.y, lower_right_wall_vertices_set, {
+    isStatic: true,
+    render: {
+        fillStyle: '#000000'
+    }
+});
+
+Composite.add(world, [lower_left_wall_set, lower_right_wall_set]);
 
 // Create the score and highscore displays
 let scoreElement = document.createElement('div');
@@ -137,8 +166,9 @@ Matter.Events.on(render, 'afterRender', () => {
     // Update the score display
     const score_position = render.bounds.min;
     const score_scale = render.options.width / (render.bounds.max.x - render.bounds.min.x);
-    const score_x = (lower_wall_center.x - score_position.x) * score_scale - BOARD_WIDTH / 3;
-    const score_y = (lower_wall_center.y - score_position.y) * score_scale;
+    const score_x = (lower_left_wall_center.x - score_position.x) * score_scale;
+    const score_height = scoreElement.clientHeight / 2;
+    const score_y = (lower_left_wall_center.y - score_position.y) * score_scale - score_height;
 
     scoreElement.style.left = `${score_x - scoreElement.offsetWidth / 2}px`;
     scoreElement.style.top = `${score_y - scoreElement.offsetHeight / 2}px`;
@@ -147,32 +177,43 @@ Matter.Events.on(render, 'afterRender', () => {
     // Update the highscore display
     const highscore_position = render.bounds.min;
     const highscore_scale = render.options.width / (render.bounds.max.x - render.bounds.min.x);
-    const highscore_x = (lower_wall_center.x - highscore_position.x) * highscore_scale + BOARD_WIDTH / 3;
-    const highscore_y = (lower_wall_center.y - highscore_position.y) * highscore_scale;
+    const highscore_x = (lower_left_wall_center.x - highscore_position.x) * highscore_scale;
+    const highscore_height = scoreElement.clientHeight / 2;
+    const highscore_y = (lower_left_wall_center.y - highscore_position.y) * highscore_scale + highscore_height;
 
     highscoreElement.style.left = `${highscore_x - highscoreElement.offsetWidth / 2}px`;
     highscoreElement.style.top = `${highscore_y - highscoreElement.offsetHeight / 2}px`;
     highscoreElement.innerText = `Highscore: ${highscore}`;
 });
 
-Composite.add(world, [left_wall, right_wall, bottom_wall, top_wall, lower_wall_set])
+Composite.add(world, [left_wall, right_wall, bottom_wall, top_wall])
 
 // Add a ball
-let ball = Bodies.circle(canvas.width / 2, canvas.height / 2, 20, {
+let ball_radius = 20;
+let ball = Bodies.circle(dispenser_location - 22.5, 25, ball_radius, {
     isStatic: false,
     restitution: 1,
     slop: 0.01,
+    mass: 1.5,
     friction: 0.01, // Friction against other objects
     frictionAir: 0.01, // Reduces air resistance for faster movement
     render: { fillStyle: '#060a19' }
 });
+
+function resetBall() {
+    Body.setPosition(ball, { x: dispenser_location - 22.5, y: 25 });
+    Body.setVelocity(ball, { x: 0, y: 0 });
+    Body.setAngularVelocity(ball, 0);
+    Body.setAngle(ball, 0);
+    Body.setStatic(ball, false);
+}
 
 Composite.add(world, [ball])
 
 // Declare flipper size
 const flipper_length = 150;
 const flipper_width = 20;
-const distance_from_center = BOARD_WIDTH / 3;
+const distance_from_center = BOARD_WIDTH / 4;
 const distance_from_bottom = canvas.height / 6;
 
 // Add right flipper
@@ -190,7 +231,7 @@ let left_flipper = Bodies.rectangle(board_center[0] - distance_from_center + fli
 let left_flipper_hinge = Bodies.circle(board_center[0] - distance_from_center, canvas.height - distance_from_bottom, 5, {
     isStatic: true,
     render: {
-        visible: false
+        visible: false,
     }
 });
 
@@ -202,7 +243,7 @@ let left_flipper_hinge_constraint = Constraint.create({
     stiffness: 1,
     length: 0,
     render: {
-        strokeStyle: '#4a485b'
+        visible: false
     }
 });
 
@@ -237,7 +278,7 @@ let right_flipper = Bodies.rectangle(board_center[0] + distance_from_center, can
 let right_flipper_hinge = Bodies.circle(board_center[0] + distance_from_center, canvas.height - distance_from_bottom, 5, {
     isStatic: true,
     render: {
-        visible: false
+        visible: DEBUG
     }
 });
 
@@ -249,7 +290,7 @@ let right_flipper_hinge_constraint = Constraint.create({
     stiffness: 1,
     length: 0,
     render: {
-        strokeStyle: '#4a485b'
+        visible: DEBUG
     }
 });
 
@@ -269,6 +310,198 @@ Matter.Events.on(engine, "beforeUpdate", () => {
 
 Composite.add(world, [right_flipper, right_flipper_hinge, right_flipper_hinge_constraint]);
 
+// Walls creating the outer lanes
+let left_lane_wall_vertices_set = [
+    { x: board_center[0] - distance_from_center - flipper_length + 15, y: canvas.height - distance_from_bottom - flipper_width - 25 }, // bottom left
+    { x: board_center[0] - distance_from_center - flipper_length + 15, y: canvas.height - distance_from_bottom - flipper_width - 230 }, // top left
+    { x: board_center[0] - distance_from_center - flipper_length + 15 + flipper_width, y: canvas.height - distance_from_bottom - flipper_width - 190 }, // top right
+    { x: board_center[0] - distance_from_center - flipper_length + 15 + flipper_width, y: canvas.height - distance_from_bottom - flipper_width - 35 }, // elbow groin
+    { x: board_center[0] - distance_from_center, y: canvas.height - distance_from_bottom }, // elbow right
+    { x: board_center[0] - distance_from_center - 10, y: canvas.height - distance_from_bottom + flipper_width - 5 } // bottom right
+];
+
+let left_lane_wall_center = Matter.Vertices.centre(left_lane_wall_vertices_set);
+let left_lane_wall = Bodies.fromVertices(left_lane_wall_center.x, left_lane_wall_center.y, left_lane_wall_vertices_set, {
+    isStatic: true,
+    render: {
+        fillStyle: 'rgb(0, 255, 0)',
+    }
+});
+
+let right_lane_wall_vertices_set = [
+    { x: board_center[0] + distance_from_center + flipper_length - 15, y: canvas.height - distance_from_bottom - flipper_width - 25 }, // bottom right
+    { x: board_center[0] + distance_from_center + flipper_length - 15, y: canvas.height - distance_from_bottom - flipper_width - 230 }, // top right
+    { x: board_center[0] + distance_from_center + flipper_length - 15 - flipper_width, y: canvas.height - distance_from_bottom - flipper_width - 190 }, // top left
+    { x: board_center[0] + distance_from_center + flipper_length - 15 - flipper_width, y: canvas.height - distance_from_bottom - flipper_width - 35 }, // elbow groin
+    { x: board_center[0] + distance_from_center, y: canvas.height - distance_from_bottom }, // elbow left
+    { x: board_center[0] + distance_from_center + 10, y: canvas.height - distance_from_bottom + flipper_width - 5 } // bottom left
+];
+
+let right_lane_wall_center = Matter.Vertices.centre(right_lane_wall_vertices_set);
+let right_lane_wall = Bodies.fromVertices(right_lane_wall_center.x, right_lane_wall_center.y, right_lane_wall_vertices_set, {
+    isStatic: true,
+    render: {
+        fillStyle: 'rgb(0, 255, 0)',
+    }
+});
+
+// Add the left_lane_wall to the world
+Composite.add(world, [left_lane_wall, right_lane_wall]);
+
+// Create lane bumpers
+let left_lane_bumper_vertices_set = [
+    { x: board_center[0] - distance_from_center - flipper_length + 60 + flipper_width, y: canvas.height - distance_from_bottom - flipper_width - 160 }, // top
+    { x: board_center[0] - distance_from_center - flipper_length + 60 + flipper_width, y: canvas.height - distance_from_bottom - flipper_width - 75 }, // left
+    { x: board_center[0] - distance_from_center - 10, y: canvas.height - distance_from_bottom - flipper_width - 40 } // bottom
+];
+let left_lane_bumper_center = Matter.Vertices.centre(left_lane_bumper_vertices_set);
+let left_lane_bumper = Bodies.fromVertices(left_lane_bumper_center.x, left_lane_bumper_center.y, left_lane_bumper_vertices_set, {
+    isStatic: true,
+    restitution: 1.2,
+    render: {
+        fillStyle: 'rgb(49, 83, 141)',
+    }
+});
+
+let right_lane_bumper_vertices_set = [
+    { x: board_center[0] + distance_from_center + flipper_length - 60 - flipper_width, y: canvas.height - distance_from_bottom - flipper_width - 160 }, // top
+    { x: board_center[0] + distance_from_center + flipper_length - 60 - flipper_width, y: canvas.height - distance_from_bottom - flipper_width - 75 }, // right
+    { x: board_center[0] + distance_from_center + 10, y: canvas.height - distance_from_bottom - flipper_width - 40 } // bottom
+];
+let right_lane_bumper_center = Matter.Vertices.centre(right_lane_bumper_vertices_set);
+let right_lane_bumper = Bodies.fromVertices(right_lane_bumper_center.x, right_lane_bumper_center.y, right_lane_bumper_vertices_set, {
+    isStatic: true,
+    restitution: 1.2,
+    render: {
+        fillStyle: 'rgb(49, 83, 141)',
+    }
+});
+Composite.add(world, [left_lane_bumper, right_lane_bumper]);
+
+// Tractor beam
+let outerTractorBeamVertices = [
+    { x: board_center[0] - BOARD_WIDTH / 12, y: canvas.height / 4.5 },
+    { x: board_center[0] + BOARD_WIDTH / 12 + 12, y: canvas.height / 4.5 },
+    { x: board_center[0] + BOARD_WIDTH / 6 + 40, y: (36 * canvas.height) / 64 },
+    { x: board_center[0] + BOARD_WIDTH / 6, y: (39 * canvas.height) / 64 },
+    { x: board_center[0] - BOARD_WIDTH / 6 + 38, y: (79 * canvas.height) / 128 },
+    { x: board_center[0] - BOARD_WIDTH / 6, y: (38 * canvas.height) / 64 },
+];
+
+let innerTractorBeamVertices = [
+    { x: board_center[0] - BOARD_WIDTH / 32 + 4, y: canvas.height / 4.5 },
+    { x: board_center[0] + BOARD_WIDTH / 32 + 12, y: canvas.height / 4.5 },
+    { x: board_center[0] + BOARD_WIDTH / 8 + 34, y: (39 * canvas.height) / 64 },
+    { x: board_center[0], y: (81 * canvas.height) / 128 },
+    { x: board_center[0] - BOARD_WIDTH / 8 + 12, y: (39 * canvas.height) / 64 },
+];
+
+// Tractor beam effect
+Matter.Events.on(engine, "beforeUpdate", () => {
+    const ballPosition = ball.position;
+
+    // Check if the ball is inside the inner tractor beam vertices
+    if (Matter.Vertices.contains(innerTractorBeamVertices, ballPosition)) {
+        const ufoCenter = { x: board_center[0], y: ufoY };
+        const forceMagnitude = 0.005;
+
+        // Calculate the direction vector towards the UFO center
+        const direction = {
+            x: ufoCenter.x - ballPosition.x,
+            y: ufoCenter.y - ballPosition.y
+        };
+
+        // Normalize the direction vector
+        const distance = Math.sqrt(direction.x ** 2 + direction.y ** 2);
+        const normalizedDirection = {
+            x: direction.x / distance,
+            y: direction.y / distance
+        };
+
+        // Apply force to the ball
+        Matter.Body.applyForce(ball, ballPosition, {
+            x: normalizedDirection.x * forceMagnitude,
+            y: normalizedDirection.y * forceMagnitude
+        });
+    }
+    else if (Matter.Vertices.contains(outerTractorBeamVertices, ballPosition)) {
+        // Check if the ball is inside the outer tractor beam vertices
+        const ufoCenter = { x: board_center[0], y: ufoY };
+        const forceMagnitude = 0.002;
+
+        // Calculate the direction vector towards the UFO center
+        const direction = {
+            x: ufoCenter.x - ballPosition.x,
+            y: ufoCenter.y - ballPosition.y
+        };
+
+        // Normalize the direction vector
+        const distance = Math.sqrt(direction.x ** 2 + direction.y ** 2);
+        const normalizedDirection = {
+            x: direction.x / distance,
+            y: direction.y / distance
+        };
+
+        // Apply force to the ball
+        Matter.Body.applyForce(ball, ballPosition, {
+            x: normalizedDirection.x * forceMagnitude,
+            y: normalizedDirection.y * forceMagnitude
+        });
+    }
+});
+
+// Draw the UFO above the tractor beam
+let ufoImage = new Image();
+ufoImage.src = ufo;
+const ufoWidth = BOARD_WIDTH / 1.75;
+const ufoHeight = canvas.height / 1.5;
+const ufoX = board_center[0] - ufoWidth / 2;
+const ufoY = canvas.height / 3 - ufoHeight / 2; // Position above the tractor beam
+ufoImage.onload = () => {
+    context?.drawImage(ufoImage, ufoX, ufoY, ufoWidth, ufoHeight);
+};
+
+// Physical UFO implementation
+let ufo_body_vertices = [
+    { x: ufoX + 20, y: ufoY + ufoHeight / 5 }, // middle left
+    { x: ufoX + ufoWidth / 4 + 55, y: ufoY + ufoHeight / 20 }, // top left
+    { x: ufoX + ufoWidth / 2, y: ufoY + 15 }, // top middle
+    { x: ufoX + (3 * ufoWidth) / 4 - 40, y: ufoY + ufoHeight / 20 }, // top right
+    { x: ufoX + ufoWidth, y: ufoY + ufoHeight / 5 }, // middle right
+    { x: ufoX + (3 * ufoWidth) / 4, y: ufoY + ufoHeight / 3 }, // bottom right
+    { x: ufoX + ufoWidth / 4, y: ufoY + ufoHeight / 3 } // bottom left
+];
+let ufo_body_center = Matter.Vertices.centre(ufo_body_vertices);
+let ufo_body = Bodies.fromVertices(ufo_body_center.x, ufo_body_center.y, ufo_body_vertices, {
+    isStatic: true,
+    chamfer: { radius: [10, 10, 10, 10, 10, 10] },
+    render: {
+        fillStyle: 'rgba(255, 0, 0, 0)',
+    }
+});
+Composite.add(world, [ufo_body]);
+
+// Add two walls in the top right of the game board
+const wallWidth = 3;
+const wallHeight = canvas.height / 24;
+const wallSpacing = ball.circleRadius * 2 + 5;
+
+let right_dispenser_wall = Bodies.rectangle(dispenser_location, wallHeight / 2, wallWidth, wallHeight, {
+    isStatic: true,
+    render: {
+        fillStyle: '#000000'
+    }
+})
+
+let left_dispenser_wall = Bodies.rectangle(dispenser_location - wallSpacing, wallHeight / 2, wallWidth, wallHeight, {
+    isStatic: true,
+    render: {
+        fillStyle: '#000000'
+    }
+})
+
+Composite.add(world, [right_dispenser_wall, left_dispenser_wall]);
+
 // Detect collisions between flippers and the ball
 Matter.Events.on(engine, "collisionStart", (event: Matter.IEventCollision<Matter.Engine>) => {
     event.pairs.forEach((pair: Matter.IPair) => {
@@ -279,7 +512,80 @@ Matter.Events.on(engine, "collisionStart", (event: Matter.IEventCollision<Matter
         } else if ((bodyB === left_flipper || bodyB === right_flipper) && bodyA === ball) {
             updateScore(1);
         }
-    }); 
+    });
+});
+
+document.addEventListener("keyup", event => {
+    keysDown.delete(event.code);
+    if (event.code === "Space") {
+        if (state === 'menu') {
+            console.log('Game Started');
+            state = 'paused';
+            title_text.style.visibility = 'hidden';
+            start_text.style.visibility = 'hidden';
+            credits_text.style.visibility = 'hidden';
+            paused_text.style.visibility = 'visible';
+        }
+        else if (state === 'paused') {
+            console.log('Ball Launched');
+            state = 'playing';
+            paused_text.style.visibility = 'hidden';
+            resetBall();
+        }
+        else if (state === 'playing') {
+            setTimeout(() => {
+                indicator_color = INDICATOR_OFF;
+            }, delay_indicator_time)
+        }
+        else if (state === 'gameover') {
+            console.log('Game Restarted');
+            state = 'paused';
+            gameover_text.style.visibility = 'hidden';
+            restart_text.style.visibility = 'hidden';
+            paused_text.style.visibility = 'visible';
+            updateScore(-score);
+            ball_count = LIVES;
+        }
+    }
+});
+
+document.addEventListener("keydown", event => {
+    if (event.code === "KeyR" && !keysDown.has(event.code)) {
+        resetBall();
+    }
+});
+
+Matter.Events.on(engine, "beforeUpdate", () => {
+    if (ball.position.y + ball_radius >= canvas.height - ball_radius / 2) {
+        resetBall();
+        ball_count--;
+        if (ball_count <= 0) {
+            console.log('Game Over');
+            state = 'gameover';
+        }
+        else if (state === 'playing') {
+            state = 'paused';
+            paused_text.style.visibility = 'visible';
+            Body.setStatic(ball, true);
+        }
+    }
+    else if (ufoX + ufoWidth / 4 < ball.position.x && ufoX + (3 * ufoWidth) / 4 > ball.position.x && ball.position.y >= ufoY + ufoHeight / 3 - ball_radius && ball.position.y <= ufoY + ufoHeight / 3 + ball_radius) {
+        setTimeout(() => {
+            if (ufoX + ufoWidth / 4 < ball.position.x && ufoX + (3 * ufoWidth) / 4 > ball.position.x && ball.position.y >= ufoY + ufoHeight / 3 - ball_radius && ball.position.y <= ufoY + ufoHeight / 3 + ball_radius) {
+                resetBall();
+                ball_count--;
+                if (ball_count <= 0) {
+                    console.log('Game Over');
+                    state = 'gameover';
+                }
+                else if (state === 'playing') {
+                    state = 'paused';
+                    paused_text.style.visibility = 'visible';
+                    Body.setStatic(ball, true);
+                }
+            }
+        }, 500);
+    }
 });
 
 // Create Key Handlers
@@ -293,6 +599,13 @@ const keyHandlers = {
             x: left_flipper.position.x,
             y: left_flipper.position.y
         }, { x: 0, y: -0.075 })
+        if (!delay_indicator) {
+            delay_indicator = true;
+            indicator_color = INDICATOR_ON;
+            setTimeout(() => {
+                delay_indicator = false;
+            }, delay_indicator_time)
+        }
     },
     Tab: () => {
         updateHighscore(0);
@@ -313,8 +626,9 @@ Matter.Events.on(engine, "beforeUpdate", event => {
     });
 });
 
-// Mouse Control
-if (DEBUG) {
+
+if (DEBUG || MOUSE_CONTROL_ENABLED) {
+    // Mouse Control
     let mouse = Mouse.create(render.canvas),
         mouseConstraint = MouseConstraint.create(engine, {
             mouse: mouse,
@@ -331,10 +645,188 @@ if (DEBUG) {
     render.mouse = mouse;
 }
 
-function gameLoop() {
-    Engine.update(engine, 1000 / FPS);
-    Render.world(render);
-    requestAnimationFrame(gameLoop);
+// Define the triangle vertices
+const triangleVertices = [
+    { x: (board_center[0] + (BOARD_WIDTH / 2) - (BOARD_WIDTH / 24)), y: lower_right_wall_center.y - 50 },
+    { x: (board_center[0] + (BOARD_WIDTH / 6)), y: canvas.height - canvas.height / 36 },
+    { x: (board_center[0] + (BOARD_WIDTH / 2) - (BOARD_WIDTH / 24)), y: canvas.height - canvas.height / 36 }
+];
+
+// Draw the triangle on the canvas
+function drawTriangle() {
+    if (context) {
+        context.beginPath();
+        context.moveTo(triangleVertices[0].x, triangleVertices[0].y);
+        context.lineTo(triangleVertices[1].x, triangleVertices[1].y);
+        context.lineTo(triangleVertices[2].x, triangleVertices[2].y);
+        context.closePath();
+        context.fillStyle = 'rgba(75, 75, 75, 0.8)'; // Yellow color
+        context.fill();
+    }
 }
 
+// Indicator inside the triangle
+const center_of_indicator = {
+    x: (triangleVertices[1].x + triangleVertices[2].x) / 2 - (triangleVertices[1].x - triangleVertices[2].x) / 3 + 5,
+    y: (triangleVertices[0].y + triangleVertices[1].y) / 2 + 5
+};
+
+function drawIndicator() {
+    if (context) {
+        const radius = 25;
+        context.beginPath();
+        context.arc(center_of_indicator.x, center_of_indicator.y, radius, 0, Math.PI * 2);
+        context.fillStyle = indicator_color;
+        context.fill();
+    }
+}
+
+// Outline image declaration and settings
+let outline_image = new Image();
+outline_image.src = outline;
+const outline_width = BOARD_WIDTH;
+const outline_height = canvas.height;
+const outline_x = board_center[0] - outline_width / 2;
+const outline_y = canvas.height / 2 - outline_height / 2;
+
+// Add the triangle drawing to the game loop
+function draw() {
+    if (context) {
+        // Existing drawing logic
+        context.beginPath();
+        context.moveTo(outerTractorBeamVertices[0].x, outerTractorBeamVertices[0].y);
+        context.lineTo(outerTractorBeamVertices[1].x, outerTractorBeamVertices[1].y);
+        context.lineTo(outerTractorBeamVertices[2].x, outerTractorBeamVertices[2].y);
+        context.lineTo(outerTractorBeamVertices[3].x, outerTractorBeamVertices[3].y);
+        context.lineTo(outerTractorBeamVertices[4].x, outerTractorBeamVertices[4].y);
+        context.lineTo(outerTractorBeamVertices[5].x, outerTractorBeamVertices[5].y);
+        context.closePath();
+        context.fillStyle = 'rgba(0, 255, 0, 0.5)';
+        context.fill();
+
+        context.beginPath();
+        context.moveTo(innerTractorBeamVertices[0].x, innerTractorBeamVertices[0].y);
+        context.lineTo(innerTractorBeamVertices[1].x, innerTractorBeamVertices[1].y);
+        context.lineTo(innerTractorBeamVertices[2].x, innerTractorBeamVertices[2].y);
+        context.lineTo(innerTractorBeamVertices[3].x, innerTractorBeamVertices[3].y);
+        context.lineTo(innerTractorBeamVertices[4].x, innerTractorBeamVertices[4].y);
+        context.closePath();
+        context.fillStyle = 'rgba(255, 0, 0, 0.5)';
+        context.fill();
+
+        context.drawImage(ufoImage, ufoX, ufoY, ufoWidth, ufoHeight);
+
+        // Draw the outline image
+        // TODO: uncomment this to see it and modify it with the outline image declaration and settings
+        // context.drawImage(outline_image, outline_x, outline_y, outline_width, outline_height);
+
+        drawTriangle();
+        drawIndicator();
+    }
+}
+
+// ALIEEYUN
+let title_text = document.createElement('div');
+title_text.style.position = 'absolute';
+title_text.style.color = 'black';
+title_text.style.fontSize = '40px';
+title_text.style.fontFamily = 'Arial, sans-serif';
+title_text.style.left = '50%';
+title_text.style.top = '70%';
+title_text.style.transform = 'translate(-50%, -50%)';
+title_text.innerText = 'ALIEEYUN';
+document.body.appendChild(title_text);
+title_text.style.visibility = 'hidden';
+
+let start_text = document.createElement('div');
+start_text.style.position = 'absolute';
+start_text.style.color = 'black';
+start_text.style.fontSize = '30px';
+start_text.style.fontFamily = 'Arial, sans-serif';
+start_text.style.left = '50%';
+start_text.style.top = '75%';
+start_text.style.transform = 'translate(-50%, -50%)';
+start_text.innerText = 'Press Space to Start';
+document.body.appendChild(start_text);
+start_text.style.visibility = 'hidden';
+
+let credits_text = document.createElement('div');
+credits_text.style.position = 'absolute';
+credits_text.style.color = 'black';
+credits_text.style.fontSize = '20px';
+credits_text.style.fontFamily = 'Arial, sans-serif';
+credits_text.style.left = '50%';
+credits_text.style.top = '80%';
+credits_text.style.transform = 'translate(-50%, -50%)';
+credits_text.innerText = 'Created by: Justin Garey and Bronson Farley';
+document.body.appendChild(credits_text);
+credits_text.style.visibility = 'hidden';
+
+let paused_text = document.createElement('div');
+paused_text.style.position = 'absolute';
+paused_text.style.color = 'black';
+paused_text.style.fontSize = '30px';
+paused_text.style.fontFamily = 'Arial, sans-serif';
+paused_text.style.left = '50%';
+paused_text.style.top = '75%';
+paused_text.style.transform = 'translate(-50%, -50%)';
+paused_text.innerText = 'Press Space to Launch';
+document.body.appendChild(paused_text);
+paused_text.style.visibility = 'hidden';
+
+let gameover_text = document.createElement('div');
+gameover_text.style.position = 'absolute';
+gameover_text.style.color = 'black';
+gameover_text.style.fontSize = '30px';
+gameover_text.style.fontFamily = 'Arial, sans-serif';
+gameover_text.style.left = '50%';
+gameover_text.style.top = '50%';
+gameover_text.style.transform = 'translate(-50%, -50%)';
+gameover_text.innerText = 'Game Over';
+document.body.appendChild(gameover_text);
+gameover_text.style.visibility = 'hidden';
+
+let restart_text = document.createElement('div');
+restart_text.style.position = 'absolute';
+restart_text.style.color = 'black';
+restart_text.style.fontSize = '30px';
+restart_text.style.fontFamily = 'Arial, sans-serif';
+restart_text.style.left = '50%';
+restart_text.style.top = '60%';
+restart_text.style.transform = 'translate(-50%, -50%)';
+restart_text.innerText = 'Press Space to Restart';
+document.body.appendChild(restart_text);
+restart_text.style.visibility = 'hidden';
+
+function gameLoop() {
+    if (state === 'menu') {
+        if (context) {
+            title_text.style.visibility = 'visible';
+            start_text.style.visibility = 'visible';
+            credits_text.style.visibility = 'visible';
+        }
+    }
+    else if (state === 'paused') {
+        if (context) {
+            Engine.update(engine, 1000 / FPS);
+            Body.setStatic(ball, true);
+            Render.world(render);
+            draw();
+            paused_text.style.visibility = 'visible';
+        }
+    }
+    else if (state === 'playing') {
+        Engine.update(engine, 1000 / FPS);
+        Render.world(render);
+        draw();
+    }
+    else if (state === 'gameover') {
+        if (context) {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            gameover_text.style.visibility = 'visible';
+            restart_text.style.visibility = 'visible';
+        }
+    }
+    requestAnimationFrame(gameLoop);
+}
 gameLoop();
