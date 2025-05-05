@@ -7,6 +7,7 @@ import ufo from './assets/ufo.svg'
 
 // General Settings
 const DEBUG = false;
+const VERBOSE = true;
 const MOUSE_CONTROL_ENABLED = true;
 const BOARD_WIDTH = 800;
 const FPS = 60;
@@ -24,6 +25,9 @@ let indicator_color = INDICATOR_OFF;
 let delay_indicator = false;
 let state = 'menu'; // menu, playing, paused, gameover
 let ball_count = LIVES;
+let triggerMultiball = false;
+let ballsActive = 0;
+let multiballTriggered = false;
 
 
 function updateHighscore(points: number) {
@@ -193,15 +197,26 @@ Composite.add(world, [left_wall, right_wall, bottom_wall, top_wall])
 let ball_radius = 20;
 let ball = Bodies.circle(dispenser_location - 22.5, 25, ball_radius, {
     isStatic: false,
-    restitution: 1,
+    restitution: 0.7,
     slop: 0.01,
     mass: 1.5,
-    friction: 0.01, // Friction against other objects
-    frictionAir: 0.01, // Reduces air resistance for faster movement
+    friction: 0.01,
+    frictionAir: 0.01,
     render: { fillStyle: '#060a19' }
 });
 
+function removeBall() {
+    if (VERBOSE) {
+        console.log('Removing ball');
+    }
+    Composite.remove(world, ball);
+}
+
 function resetBall() {
+    if (VERBOSE) {
+        console.log('Resetting Ball');
+    }
+    Composite.add(world, [ball])
     Body.setPosition(ball, { x: dispenser_location - 22.5, y: 25 });
     Body.setVelocity(ball, { x: 0, y: 0 });
     Body.setAngularVelocity(ball, 0);
@@ -209,7 +224,32 @@ function resetBall() {
     Body.setStatic(ball, false);
 }
 
-Composite.add(world, [ball])
+
+// Add a second ball
+let secondBall = Bodies.circle(dispenser_location - 22.5, 25, ball_radius, {
+    restitution: 1,
+    slop: 0.01,
+    mass: 1.5,
+    friction: 0.01,
+    frictionAir: 0.01,
+    render: { fillStyle: '#ff00ff' }
+});
+
+function spawnSecondBall() {
+    if (VERBOSE) {
+        console.log('Spawning Second Ball');
+    }
+    ballsActive++;
+    Composite.add(world, secondBall);
+}
+
+function removeSecondBall() {
+    if (VERBOSE) {
+        console.log('Removing Second Ball');
+    }
+    ballsActive--;
+    Composite.remove(world, secondBall);
+}
 
 // Declare flipper size
 const flipper_length = 150;
@@ -510,9 +550,9 @@ Matter.Events.on(engine, "collisionStart", (event: Matter.IEventCollision<Matter
     event.pairs.forEach((pair: Matter.Pair) => {
         const { bodyA, bodyB } = pair;
 
-        if ((bodyA === left_flipper || bodyA === right_flipper) && bodyB === ball) {
+        if ((bodyA === left_flipper || bodyA === right_flipper) && (bodyB === ball || bodyB === secondBall)) {
             updateScore(1);
-        } else if ((bodyB === left_flipper || bodyB === right_flipper) && bodyA === ball) {
+        } else if ((bodyB === left_flipper || bodyB === right_flipper) && (bodyB === ball || bodyB === secondBall)) {
             updateScore(1);
         }
     });
@@ -534,11 +574,10 @@ document.addEventListener("keyup", event => {
             state = 'playing';
             paused_text.style.visibility = 'hidden';
             resetBall();
+            ballsActive++;
         }
         else if (state === 'playing') {
-            setTimeout(() => {
-                indicator_color = INDICATOR_OFF;
-            }, delay_indicator_time)
+            // nothing to do here
         }
         else if (state === 'gameover') {
             console.log('Game Restarted');
@@ -558,34 +597,74 @@ document.addEventListener("keydown", event => {
     }
 });
 
+function isBallInBeam(ball_to_check: Matter.Body = ball): boolean {
+    return (
+        ufoX + ufoWidth / 4 < ball_to_check.position.x &&
+        ufoX + (3 * ufoWidth) / 4 > ball_to_check.position.x &&
+        ball_to_check.position.y >= ufoY + ufoHeight / 3 - ball_radius &&
+        ball_to_check.position.y <= ufoY + ufoHeight / 3 + ball_radius
+    );
+}
+
 Matter.Events.on(engine, "beforeUpdate", () => {
+    // --- Main ball fell ---
     if (ball.position.y + ball_radius >= canvas.height - ball_radius / 2) {
-        resetBall();
+        removeBall();
         ball_count--;
-        if (ball_count <= 0) {
-            console.log('Game Over');
-            state = 'gameover';
-        }
-        else if (state === 'playing') {
-            state = 'paused';
-            paused_text.style.visibility = 'visible';
-            Body.setStatic(ball, true);
+        ballsActive--;
+        if (ballsActive = 0) {
+            if (ball_count <= 0) {
+                console.log('Game Over');
+                state = 'gameover';
+            } else if (state === 'playing') {
+                state = 'paused';
+                paused_text.style.visibility = 'visible';
+                resetBall();
+                Body.setStatic(ball, true);
+            }
         }
     }
-    else if (ufoX + ufoWidth / 4 < ball.position.x && ufoX + (3 * ufoWidth) / 4 > ball.position.x && ball.position.y >= ufoY + ufoHeight / 3 - ball_radius && ball.position.y <= ufoY + ufoHeight / 3 + ball_radius) {
-        setTimeout(() => {
-            if (ufoX + ufoWidth / 4 < ball.position.x && ufoX + (3 * ufoWidth) / 4 > ball.position.x && ball.position.y >= ufoY + ufoHeight / 3 - ball_radius && ball.position.y <= ufoY + ufoHeight / 3 + ball_radius) {
+
+    // --- Second ball fell ---
+    if (secondBall && secondBall.position.y + ball_radius >= canvas.height - ball_radius / 2) {
+        removeSecondBall();
+        multiballTriggered = false;
+        if (ballsActive = 0) {
+            if (ball_count <= 0) {
+                console.log('Game Over');
+                state = 'gameover';
+            } else if (state === 'playing') {
+                state = 'paused';
+                paused_text.style.visibility = 'visible';
                 resetBall();
+                Body.setStatic(ball, true);
+            }
+        }
+    }
+
+    // Ball is in UFO beam
+    if (isBallInBeam(ball)) {
+        setTimeout(() => {
+            if (!triggerMultiball && isBallInBeam(ball)) {
+                triggerMultiball = true;
+                removeBall();
                 ball_count--;
                 if (ball_count <= 0) {
                     console.log('Game Over');
                     state = 'gameover';
-                }
-                else if (state === 'playing') {
+                } else if (state === 'playing') {
                     state = 'paused';
                     paused_text.style.visibility = 'visible';
+                    resetBall();
                     Body.setStatic(ball, true);
                 }
+            }
+        }, 500);
+    }
+    if (multiballTriggered && isBallInBeam(secondBall)) {
+        setTimeout(() => {
+            if (isBallInBeam(secondBall)) {
+                removeSecondBall();
             }
         }, 500);
     }
@@ -812,7 +891,7 @@ function gameLoop() {
     }
     else if (state === 'paused') {
         if (context) {
-            Engine.update(engine, 1000 / FPS);
+            Engine.update(engine, 1000 / FPS, 0.7); // Third argument is the time correction scale
             Body.setStatic(ball, true);
             Render.world(render);
             draw();
