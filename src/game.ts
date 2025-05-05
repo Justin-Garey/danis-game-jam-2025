@@ -2,8 +2,8 @@ import './style.css'
 import * as Matter from 'matter-js'
 import decomp from 'poly-decomp'
 import ufo from './assets/ufo.svg'
-import outline from './assets/outline.svg'
-import satellite from './assets/satellite.svg'
+//import outline from './assets/outline.svg'
+//import satellite from './assets/satellite.svg'
 
 // General Settings
 const DEBUG = false;
@@ -38,7 +38,6 @@ function updateScore(points: number) {
 
 // Matter.js Settings
 Matter.Common.setDecomp(decomp);
-Matter.Resolver._restingThresh = 0.001; // default is 4
 
 // Canvas and Board Settings
 let canvas = document.querySelector("#game-canvas") as HTMLCanvasElement;
@@ -51,9 +50,9 @@ let context = canvas.getContext('2d');
 // Common Matter Uses
 let Engine = Matter.Engine;
 let Render = Matter.Render;
-let Runner = Matter.Runner;
-let Composites = Matter.Composites;
-let Events = Matter.Events;
+// let Runner = Matter.Runner;
+// let Composites = Matter.Composites;
+// let Events = Matter.Events;
 let Constraint = Matter.Constraint;
 let MouseConstraint = Matter.MouseConstraint;
 let Mouse = Matter.Mouse;
@@ -120,6 +119,7 @@ let lower_left_wall_vertices_set = [
     { x: (board_center[0] - (BOARD_WIDTH / 2)), y: canvas.height }
 ];
 let lower_left_wall_center = Matter.Vertices.centre(lower_left_wall_vertices_set);
+//@ts-ignore
 let lower_left_wall_set = Bodies.fromVertices(lower_left_wall_center.x, lower_left_wall_center.y, lower_left_wall_vertices_set, {
     isStatic: true,
     render: {
@@ -134,6 +134,7 @@ let lower_right_wall_vertices_set = [
     { x: (board_center[0] + (BOARD_WIDTH / 2)), y: canvas.height }
 ];
 let lower_right_wall_center = Matter.Vertices.centre(lower_right_wall_vertices_set);
+//@ts-ignore
 let lower_right_wall_set = Bodies.fromVertices(lower_right_wall_center.x, lower_right_wall_center.y, lower_right_wall_vertices_set, {
     isStatic: true,
     render: {
@@ -165,7 +166,7 @@ document.body.appendChild(highscoreElement);
 Matter.Events.on(render, 'afterRender', () => {
     // Update the score display
     const score_position = render.bounds.min;
-    const score_scale = render.options.width / (render.bounds.max.x - render.bounds.min.x);
+    const score_scale = render.options.width! / (render.bounds.max.x - render.bounds.min.x);
     const score_x = (lower_left_wall_center.x - score_position.x) * score_scale;
     const score_height = scoreElement.clientHeight / 2;
     const score_y = (lower_left_wall_center.y - score_position.y) * score_scale - score_height;
@@ -176,7 +177,7 @@ Matter.Events.on(render, 'afterRender', () => {
 
     // Update the highscore display
     const highscore_position = render.bounds.min;
-    const highscore_scale = render.options.width / (render.bounds.max.x - render.bounds.min.x);
+    const highscore_scale = render.options.width! / (render.bounds.max.x - render.bounds.min.x);
     const highscore_x = (lower_left_wall_center.x - highscore_position.x) * highscore_scale;
     const highscore_height = scoreElement.clientHeight / 2;
     const highscore_y = (lower_left_wall_center.y - highscore_position.y) * highscore_scale + highscore_height;
@@ -221,7 +222,6 @@ let left_flipper_group = Body.nextGroup(true);
 let left_flipper = Bodies.rectangle(board_center[0] - distance_from_center + flipper_length, canvas.height - distance_from_bottom, flipper_length, flipper_width, {
     collisionFilter: { group: left_flipper_group },
     isStatic: false,
-    chamfer: 5,
     render: {
         fillStyle: '#ff0000',
         lineWidth: 1
@@ -268,7 +268,6 @@ let right_flipper_group = Body.nextGroup(true);
 let right_flipper = Bodies.rectangle(board_center[0] + distance_from_center, canvas.height - distance_from_bottom, 150, 20, {
     collisionFilter: { group: right_flipper_group },
     isStatic: false,
-    chamfer: 5,
     render: {
         fillStyle: '#0000ff',
         lineWidth: 1
@@ -321,6 +320,7 @@ let left_lane_wall_vertices_set = [
 ];
 
 let left_lane_wall_center = Matter.Vertices.centre(left_lane_wall_vertices_set);
+//@ts-ignore
 let left_lane_wall = Bodies.fromVertices(left_lane_wall_center.x, left_lane_wall_center.y, left_lane_wall_vertices_set, {
     isStatic: true,
     render: {
@@ -338,6 +338,7 @@ let right_lane_wall_vertices_set = [
 ];
 
 let right_lane_wall_center = Matter.Vertices.centre(right_lane_wall_vertices_set);
+//@ts-ignore
 let right_lane_wall = Bodies.fromVertices(right_lane_wall_center.x, right_lane_wall_center.y, right_lane_wall_vertices_set, {
     isStatic: true,
     render: {
@@ -355,6 +356,7 @@ let left_lane_bumper_vertices_set = [
     { x: board_center[0] - distance_from_center - 10, y: canvas.height - distance_from_bottom - flipper_width - 40 } // bottom
 ];
 let left_lane_bumper_center = Matter.Vertices.centre(left_lane_bumper_vertices_set);
+//@ts-ignore
 let left_lane_bumper = Bodies.fromVertices(left_lane_bumper_center.x, left_lane_bumper_center.y, left_lane_bumper_vertices_set, {
     isStatic: true,
     restitution: 1.2,
@@ -369,6 +371,7 @@ let right_lane_bumper_vertices_set = [
     { x: board_center[0] + distance_from_center + 10, y: canvas.height - distance_from_bottom - flipper_width - 40 } // bottom
 ];
 let right_lane_bumper_center = Matter.Vertices.centre(right_lane_bumper_vertices_set);
+//@ts-ignore
 let right_lane_bumper = Bodies.fromVertices(right_lane_bumper_center.x, right_lane_bumper_center.y, right_lane_bumper_vertices_set, {
     isStatic: true,
     restitution: 1.2,
@@ -472,9 +475,9 @@ let ufo_body_vertices = [
     { x: ufoX + ufoWidth / 4, y: ufoY + ufoHeight / 3 } // bottom left
 ];
 let ufo_body_center = Matter.Vertices.centre(ufo_body_vertices);
+//@ts-ignore
 let ufo_body = Bodies.fromVertices(ufo_body_center.x, ufo_body_center.y, ufo_body_vertices, {
     isStatic: true,
-    chamfer: { radius: [10, 10, 10, 10, 10, 10] },
     render: {
         fillStyle: 'rgba(255, 0, 0, 0)',
     }
@@ -484,7 +487,7 @@ Composite.add(world, [ufo_body]);
 // Add two walls in the top right of the game board
 const wallWidth = 3;
 const wallHeight = canvas.height / 24;
-const wallSpacing = ball.circleRadius * 2 + 5;
+const wallSpacing = ball_radius * 2 + 5;
 
 let right_dispenser_wall = Bodies.rectangle(dispenser_location, wallHeight / 2, wallWidth, wallHeight, {
     isStatic: true,
@@ -504,7 +507,7 @@ Composite.add(world, [right_dispenser_wall, left_dispenser_wall]);
 
 // Detect collisions between flippers and the ball
 Matter.Events.on(engine, "collisionStart", (event: Matter.IEventCollision<Matter.Engine>) => {
-    event.pairs.forEach((pair: Matter.IPair) => {
+    event.pairs.forEach((pair: Matter.Pair) => {
         const { bodyA, bodyB } = pair;
 
         if ((bodyA === left_flipper || bodyA === right_flipper) && bodyB === ball) {
@@ -620,9 +623,9 @@ document.addEventListener("keyup", event => {
     keysDown.delete(event.code);
 });
 
-Matter.Events.on(engine, "beforeUpdate", event => {
+Matter.Events.on(engine, "beforeUpdate", () => {
     [...keysDown].forEach(k => {
-        keyHandlers[k]?.();
+        keyHandlers[k as keyof typeof keyHandlers]?.();
     });
 });
 
@@ -682,12 +685,13 @@ function drawIndicator() {
 }
 
 // Outline image declaration and settings
-let outline_image = new Image();
-outline_image.src = outline;
-const outline_width = BOARD_WIDTH;
-const outline_height = canvas.height;
-const outline_x = board_center[0] - outline_width / 2;
-const outline_y = canvas.height / 2 - outline_height / 2;
+// TODO: uncomment this when needed
+// let outline_image = new Image();
+// outline_image.src = outline;
+// const outline_width = BOARD_WIDTH;
+// const outline_height = canvas.height;
+// const outline_x = board_center[0] - outline_width / 2;
+// const outline_y = canvas.height / 2 - outline_height / 2;
 
 // Add the triangle drawing to the game loop
 function draw() {
